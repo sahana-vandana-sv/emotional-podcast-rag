@@ -1,3 +1,41 @@
+# =========================
+# API Keys & Secrets
+# =========================
+.env
+*.env
+config/secrets.yaml
+**/api_key*
+
+# =========================
+# Data (too large for GitHub)
+# =========================
+data/raw/*
+data/processed/*
+chromadb/
+*.pkl
+*.csv
+*.json
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+venv/
+env/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
