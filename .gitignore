@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Edit .gitignore file, add:
 ```
    
@@ -31,3 +32,22 @@
    # OS
    .DS_Store
    Thumbs.db
+=======
+# virtual env
+venv/
+.venv/
+
+# secrets
+.env
+.env.*
+
+# python cache
+__pycache__/
+*.py[cod]
+
+# data (optional but recommended)
+data/
+
+# jupyter
+.ipynb_checkpoints/
+>>>>>>> 0b3cf22 (Add proper .gitignore and project code)
