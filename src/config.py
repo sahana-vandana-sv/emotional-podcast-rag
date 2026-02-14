@@ -41,3 +41,8 @@ KEYWORD_WEIGHT = 0.3
 # CHROMADB SETTINGS
 # -----------------------------------------------------------
 COLLECTION_NAME = "podcast_episodes"
+
+# -----------------------------------------------------------
+# MEMORY SETTINGS
+# -----------------------------------------------------------
+MAX_HISTORY_TURNS = 10   # how many past turns to keep

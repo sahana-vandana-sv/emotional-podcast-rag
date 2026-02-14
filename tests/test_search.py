@@ -3,8 +3,12 @@
 import sys
 sys.path.append('..')
 
-from src.search import get_embedding, semantic_search
+from src.get_embeddings import get_embedding
+from src.search import semantic_search
 from src.data_loader import load_episodes
+from src.vector_store import get_collection
+
+
 
 def test_get_embedding():
     """Test embedding generation"""
@@ -15,8 +19,8 @@ def test_get_embedding():
 
 def test_semantic_search():
     """Test search functionality"""
-    df = load_episodes()
-    results = semantic_search("I feel anxious", df, top_k=3)
+    collection = get_collection()
+    results = semantic_search("I feel anxious",collection, top_k=3)
     
     assert len(results) == 3
     assert 'similarity' in results[0]
