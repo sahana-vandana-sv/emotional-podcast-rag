@@ -1,38 +1,3 @@
-<<<<<<< HEAD
-# Edit .gitignore file, add:
-```
-   
-   Create `.gitignore` with this content:
-```
-   # API Keys and Secrets
-   *.env
-   .env.local
-   config/secrets.yaml
-   **/api_key*
-   
-   # Data files (too large for GitHub)
-   data/raw/*.csv
-   data/raw/*.json
-   data/processed/embeddings/
-   chromadb/
-   *.pkl
-   
-   # Logs
-   *.log
-   logs/
-   
-   # Python
-   __pycache__/
-   *.pyc
-   *.pyo
-   .ipynb_checkpoints/
-   venv/
-   env/
-   
-   # OS
-   .DS_Store
-   Thumbs.db
-=======
 # virtual env
 venv/
 .venv/
@@ -40,14 +5,40 @@ venv/
 # secrets
 .env
 .env.*
-
-# python cache
-__pycache__/
-*.py[cod]
+env/
 
 # data (optional but recommended)
 data/
 
 # jupyter
 .ipynb_checkpoints/
->>>>>>> 0b3cf22 (Add proper .gitignore and project code)
+
+# API Keys and Secrets
+*.env
+.env.local
+config/secrets.yaml
+**/api_key*
+
+# Data files (too large for GitHub)
+data/raw/*.csv
+data/raw/*.json
+data/processed/embeddings/
+chromadb/
+*.pkl
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+*.py[cod]
+
+
+# OS
+.DS_Store
+Thumbs.db
+
