@@ -22,7 +22,7 @@ config/secrets.yaml
 # Data files (too large for GitHub)
 data/raw/*.csv
 data/raw/*.json
-data/processed/embeddings/
+#data/processed/*.csv
 chromadb/
 *.pkl
 

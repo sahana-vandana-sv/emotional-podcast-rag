@@ -1,6 +1,7 @@
 #fast api is already installed 
+import os
 import sys
-sys.path.append('..')
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 from fastapi import FastAPI,HTTPException
@@ -10,7 +11,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 from src.data_loader import load_episodes
-from src.vector_store import get_collection
+from src.vector_store import get_collection,build_collection
 from src.memory import ConversationMemory
 from src.rag_pipeline import run_pipeline
 
@@ -27,11 +28,17 @@ async def lifespan(app: FastAPI):
      # Runs ONCE when server starts
     print("Loading episodes and ChromaDB...")
     state["episodes_df"] = load_episodes()
-    state["collection"]  = get_collection()
-    state["memory"]      = ConversationMemory()
-    print(f"✓ Ready. {len(state['episodes_df'])} episodes loaded.")
+      # Try to load — auto-builds on fresh server (first Render deploy)
+    try:
+        state["collection"] = get_collection()
+    except RuntimeError:
+        print("⚠️  Building ChromaDB from CSV (first deploy)...")
+        state["collection"] = build_collection(state["episodes_df"])
+
+    state["memory"] = ConversationMemory()
+    print(f"✅ Ready — {len(state['episodes_df'])} episodes loaded.")
     yield
-    print("shutting down")
+    print("👋 Shutting down.")
 
 #app
 app = FastAPI(
@@ -44,6 +51,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -53,6 +61,13 @@ app.add_middleware(
 class SearchRequest(BaseModel):
     query:str
     num_recommendations:Optional[int]=3
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "I feel like a failure after not getting that job",
+                "num_recommendations": 3,
+            }
+        }
 
 class EpisodeOut(BaseModel):
     episode_title: str
@@ -69,29 +84,39 @@ class SearchResponse(BaseModel):
     recommendations:    list[EpisodeOut]
     memory_turn_count:  int
 
-#End points
+class HealthResponse(BaseModel):
+    status:          str
+    episodes_loaded: int
+    memory_turns:    int
 
+#End points
 @app.get("/")
 def root():
     return {
         "name":"Emotional Podcast RAG API",
         "status":"running",
-        "endpoints":["/health","/api/search","/api/memory/clear"]
+        "docs":      "/docs",
+        "endpoints": {
+            "health":       "GET  /health",
+            "search":       "POST /api/search",
+            "clear_memory": "DELETE /api/memory/clear",
+        },
     }
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 def health():
-    return{
-        "status":"healthy",
-        "episodes_loaded": len(state["episodes_df"]) if state["episodes_df"] is not None else 0,
-        "memory_turns":    len(state["memory"]) if state["memory"] else 0,
-    }
+    return HealthResponse(
+        status          = "healthy",
+        episodes_loaded = len(state["episodes_df"]) if state["episodes_df"] is not None else 0,
+        memory_turns    = len(state["memory"]) if state["memory"] else 0,
+    )
 
 @app.post("/api/search", response_model=SearchResponse)
 def search(request:SearchRequest):
     if state['episodes_df'] is None:
         raise HTTPException(status_code='503', detail="episodes not loaded")
-
+    if not request.query.strip():
+        raise HTTPException(status_code=422, detail="Query cannot be empty.")
     try:
         output = run_pipeline(
             user_query = request.query,
@@ -99,10 +124,8 @@ def search(request:SearchRequest):
             memory     = state["memory"],
             top_k      = request.num_recommendations,
         )
-
         ctx  = output["emotional_context"]
         recs = output["recommendations"]
-
         return SearchResponse(
             query           = request.query,
             primary_emotion = ctx["primary_emotion"],
@@ -120,13 +143,14 @@ def search(request:SearchRequest):
             ],
             memory_turn_count = len(state["memory"]),
         )
-
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
 
 @app.delete("/api/memory/clear")
 def clear_memory():
-    """Reset conversation memory — start a fresh session."""
-    state["memory"].clear()
+    if state["memory"]:
+        state["memory"].clear()
     return {"status": "memory cleared", "turns": 0}
