@@ -2,6 +2,22 @@
 
 AI powered podcast discovery system that understands your emotional state and recommends relevant episodes.
 
+## 🌐 Live Demo
+**API:** https://emotional-podcast-rag.onrender.com  
+**Docs:** https://emotional-podcast-rag.onrender.com/docs  
+
+Try it now — no code required! Open the docs page and click "Try it out" on `/api/search`.
+
+[![Deploy Status](https://img.shields.io/badge/deploy-passing-brightgreen)](https://emotional-podcast-rag.onrender.com)
+[![API Status](https://img.shields.io/badge/API-online-success)](https://emotional-podcast-rag.com/health)
+
+---
+
+## 🌟 What It Does
+
+When you're stressed, anxious, or going through something hard — this system finds the right podcast episode for you...
+---
+
 ## 🌟 Features
 
 - **Emotional Intelligence**: Understands emotional context of your query
