@@ -15,6 +15,8 @@ PROCESSED_DATA_DIR=DATA_DIR/"processed"
 CHROMA_DIR = DATA_DIR/"chromadb"
 
 #Your CSV files 
+PODCASTS_CSV=RAW_DATA_DIR/"podcast_urls.csv"
+NEW_URLS_CSV=RAW_DATA_DIR/"new_urls.csv"
 TRANSCRIPTS_CSV = RAW_DATA_DIR/"transcripts_df.csv"
 TRANSCRIPT_EMBEDDINGS_CSV=PROCESSED_DATA_DIR/"transcripts_with_embeddings.csv"
 

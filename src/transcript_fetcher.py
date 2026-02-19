@@ -4,11 +4,11 @@
 # and logs every error to logs/transcript_errors.log
 #
 # Pipeline:
-#   youtube_urls.txt
+#   podcast_urls.txt
 #     → extract video ID from URL
 #     → fetch transcript via youtube-transcript-api
 #     → clean transcript text
-#     → save to data/processed/transcripts_df.csv
+#     → save to data/processed/transcripts_df.csv 
 #     → log any failures to logs/transcript_errors.log
 #
 # Install dependency first:
@@ -32,9 +32,9 @@ from src.config import BASE_DIR, PROCESSED_DIR
 
 
 # -----------------------------------------------------------
-# PATHS
+# PATHS - update in config 
 # -----------------------------------------------------------
-URLS_FILE = BASE_DIR / "data" / "youtube_urls.txt"
+URLS_FILE = BASE_DIR / "data" / "podcast_urls.csv"
 OUTPUT_CSV = PROCESSED_DIR / "transcripts_df.csv"
 LOG_DIR    = BASE_DIR / "logs"
 LOG_FILE   = LOG_DIR / "transcript_errors.log"
