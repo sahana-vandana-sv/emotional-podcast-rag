@@ -5,6 +5,8 @@ from pathlib import Path
 
 from src.config import PODCASTS_CSV,NEW_URLS_CSV,TRANSCRIPTS_CSV,TRANSCRIPT_EMBEDDINGS_CSV
 from src.url_store import add_new_urls
+from src.transcript_fetcher import fetch_all_transcripts
+from src.get_embeddings import get_embeddings_batches
 
 def processed_or_empty(path:Path)->pd.DataFrame:
     if path.exists():
@@ -21,14 +23,38 @@ def main():
     urls = urls_df["url"].dropna().astype(str).tolist()
 
     #load already processed 
-    processed=processed_or_empty(TRANSCRIPTS_CSV)
+    transcripts_df=processed_or_empty(TRANSCRIPTS_CSV)
 
     # 3) Find truly new URLs (not already processed)
-    already_processed = set(processed["url"].dropna().astype(str).tolist()) if "url" in processed.columns else set()
+    already_processed = set(transcripts_df["url"].dropna().astype(str).tolist()) if "url" in transcripts_df.columns else set()
     new_urls = [u for u in urls if u not in already_processed]
 
     print(f"Total URLs in master list: {len(urls)}")
     print(f"New URLs to process: {len(new_urls)}")
+
+    if not new_urls:
+        print("Nothing new to process. Exiting.")
+        return
+    
+    # fetch transcripts only for new urls 
+    new_transcripts_df = fetch_all_transcripts(urls=new_urls, sleep_secs=1.0, save=False)
+
+    # Append and save transcripts
+    combined = pd.concat([transcripts_df, new_transcripts_df], ignore_index=True)
+    #(BASE / "data" / "processed").mkdir(parents=True, exist_ok=True)
+    combined.to_csv(TRANSCRIPTS_CSV, index=False)
+    print(f"Saved updated transcripts to {TRANSCRIPTS_CSV}")
+
+    # 5) Add embeddings ONLY where missing (store as parquet to avoid CSV truncation)
+    combined = get_embeddings_batches(
+        combined,
+        text_col="transcript_clean",
+        model="text-embedding-3-small",
+        batch_size=50,
+        save_path=None
+    )
+    combined.to_parquet(PROCESSED_PARQUET, index=False)
+    print(f"Saved with embeddings to {PROCESSED_PARQUET}")
 
 
 
