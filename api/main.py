@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from src.data_loader import load_episodes
 from src.vector_store import get_collection,build_collection
 from src.memory import ConversationMemory
-from src.rag_pipeline import run_pipeline
+from scripts.rag_pipeline import run_pipeline
 
 #state
 state ={

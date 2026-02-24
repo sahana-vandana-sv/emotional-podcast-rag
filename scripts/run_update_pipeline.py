@@ -6,7 +6,7 @@ from pathlib import Path
 from src.config import PODCASTS_CSV,NEW_URLS_CSV,TRANSCRIPTS_CSV,TRANSCRIPT_EMBEDDINGS_CSV
 from src.url_store import add_new_urls
 from src.transcript_fetcher import fetch_all_transcripts
-from src.get_embeddings import get_embeddings_batches
+from src.get_embeddings import add_embeddings_to_df
 
 def processed_or_empty(path:Path)->pd.DataFrame:
     if path.exists():
@@ -45,18 +45,19 @@ def main():
     combined.to_csv(TRANSCRIPTS_CSV, index=False)
     print(f"Saved updated transcripts to {TRANSCRIPTS_CSV}")
 
-    # 5) Add embeddings ONLY where missing (store as parquet to avoid CSV truncation)
-    combined = get_embeddings_batches(
-        combined,
-        text_col="transcript_clean",
-        model="text-embedding-3-small",
-        batch_size=50,
-        save_path=None
-    )
-    combined.to_parquet(PROCESSED_PARQUET, index=False)
-    print(f"Saved with embeddings to {PROCESSED_PARQUET}")
+    
+    # combined is your dataframe with transcript_clean etc.
+    # Load transcripts
+    df = pd.read_csv(TRANSCRIPTS_CSV)
 
+    # Generate embeddings (automatically chunks long transcripts)
+    df = add_embeddings_to_df(df, text_col="transcript_clean")
 
+    # Save
+    df.to_csv(TRANSCRIPT_EMBEDDINGS_CSV, index=False)
+
+    # store the embeddings in the chromadb 
+    
 
 
 if __name__ == "__main__":

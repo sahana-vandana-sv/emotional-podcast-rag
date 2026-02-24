@@ -28,16 +28,8 @@ from youtube_transcript_api import (
     VideoUnavailable,
 )
 
-from src.config import BASE_DIR, PROCESSED_DIR
+from src.config import PROCESSED_DATA_DIR ,PODCASTS_CSV,TRANSCRIPTS_CSV,LOG_DIR,LOG_FILE
 
-
-# -----------------------------------------------------------
-# PATHS - update in config 
-# -----------------------------------------------------------
-URLS_FILE = BASE_DIR / "data" / "podcast_urls.csv"
-OUTPUT_CSV = PROCESSED_DIR / "transcripts_df.csv"
-LOG_DIR    = BASE_DIR / "logs"
-LOG_FILE   = LOG_DIR / "transcript_errors.log"
 
 
 # -----------------------------------------------------------
@@ -84,7 +76,7 @@ logger = _setup_logger()
 # -----------------------------------------------------------
 # STEP 1: Load URLs from file
 # -----------------------------------------------------------
-def load_urls(filepath: Path = URLS_FILE) -> list[str]:
+def load_urls(filepath: Path = PODCASTS_CSV) -> list[str]:
     """
     Read YouTube URLs from a plain text file (one URL per line).
     Lines starting with # are treated as comments and skipped.
@@ -154,15 +146,9 @@ def extract_video_id(url: str) -> str | None:
 # STEP 3: Fetch transcript for one video
 # -----------------------------------------------------------
 def fetch_transcript(video_id: str) -> dict:
-    """
-    Fetch the transcript for a single YouTube video.
 
-    Returns
-    -------
-    dict with keys:
-        video_id, status, transcript_text, duration_mins,
-        num_segments, raw_segments, error (if failed)
-    """
+    
+
     result = {
         "video_id":        video_id,
         "status":          None,
@@ -174,19 +160,18 @@ def fetch_transcript(video_id: str) -> dict:
     }
 
     try:
-        segments = YouTubeTranscriptApi.get_transcript(
-            video_id,
-            languages=["en", "en-US", "en-GB"],
-        )
-
-        full_text = " ".join(seg["text"] for seg in segments)
+        ytt_api = YouTubeTranscriptApi()
+        fetched = ytt_api.fetch(video_id, languages=["en","en-US", "en-GB"])  # adjust languages if needed
+        segments = fetched.to_raw_data()                     # list[dict], like before
+        
+        full_text = " ".join(seg.get("text", "") for seg in segments).strip()
 
         if segments:
             last = segments[-1]
-            duration_secs = last.get("start", 0) + last.get("duration", 0)
+            duration_secs = float(last.get("start", 0) or 0) + float(last.get("duration", 0) or 0)
             duration_mins = round(duration_secs / 60, 2)
         else:
-            duration_mins = 0
+            duration_mins = 0.0
 
         result.update({
             "status":          "success",
@@ -201,20 +186,14 @@ def fetch_transcript(video_id: str) -> dict:
         )
 
     # Known errors — each logged with its own message
-    except TranscriptsDisabled:
-        msg = "Transcripts are disabled for this video"
-        result.update({"status": "failed", "error": msg})
-        logger.warning(f"✗  {video_id} | TranscriptsDisabled | {msg}")
-
-    except NoTranscriptFound:
-        msg = "No English transcript found"
-        result.update({"status": "failed", "error": msg})
-        logger.warning(f"✗  {video_id} | NoTranscriptFound | {msg}")
-
-    except VideoUnavailable:
-        msg = "Video is unavailable or private"
-        result.update({"status": "failed", "error": msg})
-        logger.error(f"✗  {video_id} | VideoUnavailable | {msg}")
+    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
+        # Known library exceptions
+        result.update({
+            "status": "error",
+            "error":  f"{type(e).__name__}: {e}",
+        })
+        logger.error(f"✗  {video_id} | {type(e).__name__} | {e}")
+        return result
 
     # Catch-all — writes full traceback to log file
     except Exception as e:
@@ -269,10 +248,39 @@ def fetch_all_transcripts(
     -------
     pd.DataFrame with one row per URL
     """
+
+    columns = [
+        "url",
+        "video_id",
+        "status",
+        "error",
+        "transcript_text",
+        "transcript_clean",
+        "duration_mins",
+        "num_segments",
+        "raw_segments",
+        "word_count",
+        "fetched_at",
+    ]
     if urls is None:
         urls = load_urls()
 
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    # If urls is [] or otherwise empty, return empty df with correct columns
+    if not urls:
+        logger.info("Starting transcript fetch for 0 URLs")
+        logger.info("─" * 60)
+        logger.info("No URLs provided. Returning empty dataframe.")
+        df_empty = pd.DataFrame(columns=columns)
+
+        # Optional: still save an empty file (usually not needed)
+        if save:
+            PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+            df_empty.to_csv(TRANSCRIPTS_CSV, index=False)
+            logger.info(f"✅ Saved empty transcripts file to: {TRANSCRIPTS_CSV}")
+
+        return df_empty
+
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     records = []
     total   = len(urls)
@@ -281,7 +289,7 @@ def fetch_all_transcripts(
     logger.info("─" * 60)
 
     for i, url in enumerate(urls, 1):
-
+        fetched_at = datetime.now().isoformat()
         video_id = extract_video_id(url)
 
         if not video_id:
@@ -297,13 +305,21 @@ def fetch_all_transcripts(
                 "num_segments":     None,
                 "raw_segments":     None,
                 "word_count":       None,
-                "fetched_at":       datetime.now().isoformat(),
+                "fetched_at":  fetched_at,
             })
             continue
 
         logger.info(f"[{i}/{total}] {video_id}  ({url})")
 
-        result = fetch_transcript(video_id)
+        result = fetch_transcript(video_id) or {}
+
+        raw_status = str(result.get("status") or "").lower()
+        if raw_status == "success":
+            status = "success"
+        else:
+            status = "failed"  # treat anything else ("error", None, etc.) as failed
+
+        transcript_text = result.get("transcript_text")
 
         clean = ""
         if result["transcript_text"]:
@@ -326,11 +342,11 @@ def fetch_all_transcripts(
         if i < total:
             time.sleep(sleep_secs)
 
-    df = pd.DataFrame(records)
+    df = pd.DataFrame.from_records(records, columns=columns)
 
     # Summary log
-    success = (df["status"] == "success").sum()
-    failed  = (df["status"] == "failed").sum()
+    success = int((df["status"] == "success").sum()) if "status" in df.columns else 0
+    failed  = int((df["status"] == "failed").sum()) if "status" in df.columns else 0
 
     logger.info("─" * 60)
     logger.info(f"Done. ✓ {success} succeeded | ✗ {failed} failed | {total} total")
@@ -341,8 +357,8 @@ def fetch_all_transcripts(
             logger.warning(f"  FAILED: {row['url']} — {row['error']}")
 
     if save:
-        df.to_csv(OUTPUT_CSV, index=False)
-        logger.info(f"✅ Saved to: {OUTPUT_CSV}")
+        df.to_csv(TRANSCRIPTS_CSV, index=False)
+        logger.info(f"✅ Saved to: {TRANSCRIPTS_CSV}")
 
     return df
 
@@ -377,5 +393,5 @@ def print_summary(df: pd.DataFrame) -> None:
             print(f"     Reason: {row['error']}")
 
     print(f"\n  📄 Log file : {LOG_FILE}")
-    print(f"  💾 CSV file : {OUTPUT_CSV}")
+    print(f"  💾 CSV file : {TRANSCRIPTS_CSV}")
     print("=" * 60)
