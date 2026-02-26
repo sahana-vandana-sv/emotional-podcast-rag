@@ -11,7 +11,7 @@ query = st.text_input("What do you want to learn about? (e.g., shame, self-compa
 
 if st.button("Search") and query.strip():
     with st.spinner("Searching..."):
-        r = requests.post(f"{API_BASE_URL}/search", json={"query": query}, timeout=60)
+        r = requests.post(f"{API_BASE_URL}/api/search", json={"query": query}, timeout=60)
         r.raise_for_status()
         data = r.json()
 
