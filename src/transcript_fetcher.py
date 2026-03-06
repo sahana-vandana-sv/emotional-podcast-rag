@@ -14,9 +14,10 @@
 # Install dependency first:
 #   pip install youtube-transcript-api
 # -----------------------------------------------------------
-
+import os
 import re
 import time
+import random
 import logging
 import pandas as pd
 from datetime import datetime
@@ -27,10 +28,9 @@ from youtube_transcript_api import (
     NoTranscriptFound,
     VideoUnavailable,
 )
+from youtube_transcript_api._errors import IpBlocked, RequestBlocked
 
 from src.config import PROCESSED_DATA_DIR ,PODCASTS_CSV,TRANSCRIPTS_CSV,LOG_DIR,LOG_FILE
-
-
 
 # -----------------------------------------------------------
 # LOGGING SETUP
@@ -71,6 +71,32 @@ def _setup_logger() -> logging.Logger:
 
 
 logger = _setup_logger()
+
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    YOUTUBE_API_AVAILABLE = True
+except ImportError:
+    YOUTUBE_API_AVAILABLE = False
+    logger.warning(
+        "google-api-python-client not installed. "
+        "Metadata fetching will be limited. "
+        "Install with: pip install google-api-python-client"
+    )
+
+
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")  # Set in .env
+
+if YOUTUBE_API_KEY and YOUTUBE_API_AVAILABLE:
+    youtube_api = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    logger.info("✓ YouTube Data API v3 initialized")
+else:
+    youtube_api = None
+    if YOUTUBE_API_AVAILABLE:
+        logger.warning(
+            "YOUTUBE_API_KEY not set. Add to .env file. "
+            "Get key from: https://console.cloud.google.com"
+        )
 
 
 # -----------------------------------------------------------
@@ -141,16 +167,65 @@ def extract_video_id(url: str) -> str | None:
     logger.warning(f"Could not extract video ID from URL: {url}")
     return None
 
+# STEP 3A: Fetch metadata using YouTube Data API v3
+
+def fetch_metadata_youtube_api(video_id: str) -> dict:
+    result = {
+        "youtube_title":   None,
+        "youtube_channel": None,
+        "duration_mins":   None,
+        "error":           None,
+    }
+    
+    if not youtube_api:
+        result["error"] = "YouTube API not configured"
+        return result
+
+    try:
+        request = youtube_api.videos().list(
+            part="snippet,contentDetails",
+            id=video_id
+        )
+        response = request.execute()
+        
+        if not response.get('items'):
+            result["error"] = "Video not found"
+            logger.warning(f"Video not found via API: {video_id}")
+            return result
+        
+        item = response['items'][0]
+        snippet = item.get('snippet', {})
+        content_details = item.get('contentDetails', {})
+        
+        # Extract metadata
+        result["youtube_title"] = snippet.get('title', 'Unknown Title')
+        result["youtube_channel"] = snippet.get('channelTitle', 'Unknown Channel')
+        
+        logger.debug(
+            f"✓ API metadata: {result['youtube_title'][:40]} | "
+            f"{result['youtube_channel']} | {duration_mins} mins"
+        )
+        
+    except HttpError as e:
+        result["error"] = f"API error: {e.resp.status}"
+        logger.error(f"YouTube API error for {video_id}: {e}")
+        
+    except Exception as e:
+        result["error"] = f"Unexpected error: {type(e).__name__}"
+        logger.error(f"Error fetching metadata for {video_id}: {e}")
+
+    return result
+
 
 # -----------------------------------------------------------
 # STEP 3: Fetch transcript for one video
 # -----------------------------------------------------------
-def fetch_transcript(video_id: str) -> dict:
-
-    
+def fetch_transcript(video_id: str, max_retries: int = 3,base_wait: float = 10.0) -> dict:
 
     result = {
         "video_id":        video_id,
+        "youtube_title":None,
+        "youtube_channel":None,
         "status":          None,
         "transcript_text": None,
         "duration_mins":   None,
@@ -159,50 +234,103 @@ def fetch_transcript(video_id: str) -> dict:
         "error":           None,
     }
 
-    try:
-        ytt_api = YouTubeTranscriptApi()
-        fetched = ytt_api.fetch(video_id, languages=["en","en-US", "en-GB"])  # adjust languages if needed
-        segments = fetched.to_raw_data()                     # list[dict], like before
-        
-        full_text = " ".join(seg.get("text", "") for seg in segments).strip()
+    # First: Try to get metadata from YouTube API
+   
+    if youtube_api:
+        metadata = fetch_metadata_youtube_api(video_id)
+        result["youtube_title"] = metadata.get("youtube_title")
+        result["youtube_channel"] = metadata.get("youtube_channel")
 
-        if segments:
-            last = segments[-1]
-            duration_secs = float(last.get("start", 0) or 0) + float(last.get("duration", 0) or 0)
-            duration_mins = round(duration_secs / 60, 2)
-        else:
-            duration_mins = 0.0
+        if metadata.get("error") and not result["youtube_title"]:
+            logger.warning(f"Could not fetch metadata via API: {metadata['error']}")
 
-        result.update({
-            "status":          "success",
-            "transcript_text": full_text,
-            "duration_mins":   duration_mins,
-            "num_segments":    len(segments),
-            "raw_segments":    segments,
-        })
+    ytt_api = YouTubeTranscriptApi()
 
-        logger.info(
-            f"✓  {video_id} | {len(segments)} segments | {duration_mins} mins"
-        )
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Fetch transcript with metadata
+            fetched = ytt_api.fetch(video_id, languages=["en","en-US", "en-GB"]) 
+            #Extract segments
+            segments = fetched.to_raw_data() or []              
+            full_text = " ".join(seg.get("text", "") for seg in segments).strip()
 
-    # Known errors — each logged with its own message
-    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
-        # Known library exceptions
-        result.update({
-            "status": "error",
-            "error":  f"{type(e).__name__}: {e}",
-        })
-        logger.error(f"✗  {video_id} | {type(e).__name__} | {e}")
-        return result
+            if segments:
+                last = segments[-1]
+                duration_secs = float(last.get("start", 0) or 0) + float(last.get("duration", 0) or 0)
+                duration_mins = round(duration_secs / 60, 2)
+            else:
+                duration_mins = 0.0
 
-    # Catch-all — writes full traceback to log file
-    except Exception as e:
-        msg = str(e)
-        result.update({"status": "failed", "error": msg})
-        logger.error(
-            f"✗  {video_id} | UnexpectedError | {msg}",
-            exc_info=True,
-        )
+            result.update({
+                "status":          "success",
+                "transcript_text": full_text,
+                "duration_mins":   duration_mins,
+                "num_segments":    len(segments),
+                "raw_segments":    segments,
+                "error": None,
+            })
+
+            logger.info(
+                f"✓  {video_id} | {len(segments)} segments | {duration_mins} mins"
+            )
+            return result
+
+        # Known errors — each logged with its own message
+        except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
+            # Known library exceptions
+            result.update({
+                "status": "unavailable",
+                "error":  f"{type(e).__name__}: {e}",
+            })
+            logger.error(f"✗  {video_id} | {type(e).__name__} | {e}")
+            return result
+                # Explicit IP/request blocks (usually retryable only with long cooldown; often best to stop)
+        except (IpBlocked, RequestBlocked) as e:
+            result.update({
+                "status": "ip_blocked",
+                "error": f"{type(e).__name__}: {str(e)[:200]}",
+            })
+            logger.error(f"⛔  {video_id} | {type(e).__name__} | {e}")
+            return result
+
+        # Other errors: retry with backoff
+        except Exception as e:
+            msg = str(e) or ""
+            is_rate_limit_like = any(
+                s in msg.lower()
+                for s in ["too many requests", "blocking requests", "429", "rate limit", "temporarily unavailable"]
+            )
+
+            # If we can retry, wait with exponential backoff + small jitter
+            if attempt < max_retries and is_rate_limit_like:
+                wait = base_wait * (2 ** (attempt - 1)) + random.uniform(0, 2)
+
+                logger.warning(
+                    f"⚠️  {video_id} | Temporary block/rate-limit "
+                    f"(attempt {attempt}/{max_retries}). Waiting {wait:.1f}s..."
+
+                )
+                time.sleep(wait)
+                continue
+
+           # Final failure or not retryable
+            result.update({
+                "status": "failed",
+                "error": f"{type(e).__name__}: {msg[:200]}",
+            })
+            
+            logger.error(
+                    f"✗  {video_id} | {type(e).__name__} | "
+                f"{'rate-limit-like' if is_rate_limit_like else 'error'} after {attempt} attempts",
+                exc_info=True,
+                )
+            
+            return result
+        # Should rarely reach here
+    if result["status"] is None:
+        result["status"] = "failed"
+        result["error"] = "Unknown failure after retries"
+
 
     return result
 
@@ -234,24 +362,14 @@ def fetch_all_transcripts(
     urls:       list[str] = None,
     sleep_secs: float = 1.0,
     save:       bool  = True,
+    keep_failed: bool = False, 
 ) -> pd.DataFrame:
-    """
-    Fetch transcripts for all URLs and save to CSV.
-
-    Parameters
-    ----------
-    urls        : list of YouTube URLs (loads from file if None)
-    sleep_secs  : delay between requests (avoids rate limiting)
-    save        : save results to CSV if True
-
-    Returns
-    -------
-    pd.DataFrame with one row per URL
-    """
 
     columns = [
         "url",
         "video_id",
+        "youtube_title",      
+        "youtube_channel",
         "status",
         "error",
         "transcript_text",
@@ -297,6 +415,8 @@ def fetch_all_transcripts(
             records.append({
                 "url":              url,
                 "video_id":         None,
+                "youtube_title":    None,
+                "youtube_channel":  None,
                 "status":           "failed",
                 "error":            "Could not extract video ID",
                 "transcript_text":  None,
@@ -328,21 +448,23 @@ def fetch_all_transcripts(
         records.append({
             "url":              url,
             "video_id":         video_id,
-            "status":           result["status"],
-            "error":            result["error"],
-            "transcript_text":  result["transcript_text"],
+           "youtube_title":    result.get("youtube_title"),
+            "youtube_channel":  result.get("youtube_channel"),
+            "status":           result.get("status"),
+            "error":            result.get("error"),
+            "transcript_text":  result.get("transcript_text"),
             "transcript_clean": clean,
-            "duration_mins":    result["duration_mins"],
-            "num_segments":     result["num_segments"],
-            "raw_segments":     str(result["raw_segments"]),
+            "duration_mins":    result.get("duration_mins"),
+            "num_segments":     result.get("num_segments"),
             "word_count":       len(clean.split()) if clean else 0,
             "fetched_at":       datetime.now().isoformat(),
         })
-
+        
+        # Rate limiting
         if i < total:
             time.sleep(sleep_secs)
 
-    df = pd.DataFrame.from_records(records, columns=columns)
+    df = pd.DataFrame(records, columns=columns)
 
     # Summary log
     success = int((df["status"] == "success").sum()) if "status" in df.columns else 0
@@ -355,7 +477,19 @@ def fetch_all_transcripts(
         logger.warning(f"{failed} failed — check {LOG_FILE}")
         for _, row in df[df["status"] == "failed"].iterrows():
             logger.warning(f"  FAILED: {row['url']} — {row['error']}")
+        if not keep_failed:
+            logger.info(f"\nRemoving {failed} failed rows from CSV...")
 
+    # Remove failed rows (unless keep_failed=True)
+    if not keep_failed:
+        df_clean = df[df["status"] == "success"].copy()
+        removed_count = len(df) - len(df_clean)
+        
+        if removed_count > 0:
+            logger.info(f"✂️  Removed {removed_count} failed rows")
+            logger.info(f"   Keeping {len(df_clean)} successful rows")
+        
+        df = df_clean      
     if save:
         df.to_csv(TRANSCRIPTS_CSV, index=False)
         logger.info(f"✅ Saved to: {TRANSCRIPTS_CSV}")
