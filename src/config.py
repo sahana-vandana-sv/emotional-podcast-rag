@@ -15,8 +15,10 @@ PROCESSED_DATA_DIR=DATA_DIR/"processed"
 
 CHROMA_DIR = DATA_DIR/"chromadb"
 
-LOG_DIR=BASE_DIR/"logs"
+CONFIG_DIR=BASE_DIR/"config"
+PROMPTS_DIR=CONFIG_DIR/"prompts"
 
+LOG_DIR=BASE_DIR/"logs"
 #Your CSV files 
 PODCASTS_CSV=RAW_DATA_DIR/"podcast_urls.csv"
 NEW_URLS_CSV=RAW_DATA_DIR/"new_urls.csv"
@@ -27,7 +29,7 @@ PROCESSED_PARQUET=PROCESSED_DATA_DIR/"transcript.parquet"
 
 #files 
 LOG_FILE=LOG_DIR / "transcript_errors.log"
-
+ACTIVE_FILE = PROMPTS_DIR / "active.json"
 
 #API keys
 OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")

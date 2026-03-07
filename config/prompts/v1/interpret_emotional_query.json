@@ -1,0 +1,11 @@
+{
+  "name": "interpret_emotional_query",
+  "version": "v1",
+  "description": "Extract emotional context from a user query as structured JSON.",
+  "system_message": "You are an empathetic assistant.",
+  "user_template": "You are an empathetic emotional intelligence assistant.\n{memory_section}\nAnalyze the user query below and extract emotional context.\nUser query: \"{user_query}\"\nRespond ONLY in JSON:\n{{\n  \"primary_emotion\": \"one word (e.g. shame, anxiety, anger, grief)\",\n  \"secondary_emotions\": [\"list of secondary emotions\"],\n  \"situation\": \"one sentence describing their situation\",\n  \"underlying_needs\": [\"validation\", \"perspective\", \"actionable advice\"],\n  \"search_keywords\": [\"key concepts to search in podcast transcripts\"]\n}}",
+  "response_format": {
+    "type": "json_object"
+  },
+  "temperature": 0.4
+}

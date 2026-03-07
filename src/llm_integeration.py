@@ -1,33 +1,33 @@
+from __future__ import annotations
+
 import json
 from openai import OpenAI
 from src.config import OPENAI_API_KEY, LLM_MODEL
+from src.prompt_loader import load_prompt
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
-def interpret_emotional_query(user_query: str, memory_context: str = "") -> dict:
+def interpret_emotional_query(
+    user_query: str,
+    memory_context: str = "",
+    prompt_version: str | None = None,
+) -> dict:
+    prompt_cfg = load_prompt("interpret_emotional_query", version=prompt_version)
     memory_section = f"\n{memory_context}\n" if memory_context else ""
-    prompt = f"""You are an empathetic emotional intelligence assistant.
-    {memory_section}
-    Analyze the user query below and extract emotional context.
-    User query: "{user_query}"
-    Respond ONLY in JSON:
-    {{
-    "primary_emotion":    "one word (e.g. shame, anxiety, anger, grief)",
-    "secondary_emotions": ["list of secondary emotions"],
-    "situation":          "one sentence describing their situation",
-    "underlying_needs":   ["validation", "perspective", "actionable advice"],
-    "search_keywords":    ["key concepts to search in podcast transcripts"]
-    }}"""
+    user_prompt = prompt_cfg["user_template"].format(
+        memory_section=memory_section,
+        user_query=user_query,
+    )
 
     response = openai_client.chat.completions.create(
         model=LLM_MODEL,
         messages=[
-            {"role": "system", "content": "You are an empathetic assistant."},
-            {"role": "user",   "content": prompt},
+            {"role": "system", "content": prompt_cfg["system_message"]},
+            {"role": "user", "content": user_prompt},
         ],
-        response_format={"type": "json_object"},
-        temperature=0.4,
+        response_format=prompt_cfg.get("response_format"),
+        temperature=prompt_cfg.get("temperature", 0.4),
     )
     return json.loads(response.choices[0].message.content)
 
@@ -36,26 +36,27 @@ def generate_explanation(
     user_query:        str,
     episode_result:    dict,
     emotional_context: dict,
+    prompt_version: str | None = None,
 ) -> str:
-    prompt = f"""You are recommending a podcast to someone who is struggling emotionally.
-    User's situation:
-    - Query: "{user_query}"
-    - Primary emotion: {emotional_context['primary_emotion']}
-    - Situation: {emotional_context['situation']}
-    - Needs: {', '.join(emotional_context['underlying_needs'])}
-    
-    Episode:
-    - Title: {episode_result['metadata']['episode_title']}
-    - Show:  {episode_result['metadata']['show_name']}
-    - Excerpt: {episode_result['preview']}
+    prompt_cfg = load_prompt("generate_explanation", version=prompt_version)
 
-    Write 2-3 warm, specific sentences explaining why THIS episode will help THEM.
-    Use "you" language. Be concrete, not generic."""
-
+    user_prompt = prompt_cfg["user_template"].format(
+        user_query=user_query,
+        primary_emotion=emotional_context["primary_emotion"],
+        situation=emotional_context["situation"],
+        underlying_needs=", ".join(emotional_context["underlying_needs"]),
+        episode_title=episode_result["metadata"]["episode_title"],
+        show_name=episode_result["metadata"]["show_name"],
+        preview=episode_result["preview"],
+    )
     response = openai_client.chat.completions.create(
         model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=150,
-        temperature=0.7,
-    )
+            messages=[
+            {"role": "system", "content": prompt_cfg["system_message"]},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=prompt_cfg.get("max_tokens", 150),
+        temperature=prompt_cfg.get("temperature", 0.7),)
     return response.choices[0].message.content.strip()
+
+

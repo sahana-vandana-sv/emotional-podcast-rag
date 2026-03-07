@@ -1,0 +1,9 @@
+{
+    "name": "generate_explanation",
+    "version": "v1",
+    "description": "Generate a warm, specific explanation for why a retrieved podcast episode is relevant.",
+    "system_message": "You are recommending a podcast to someone who is struggling emotionally.",
+    "user_template": "User's situation:\n- Query: \"{user_query}\"\n- Primary emotion: {primary_emotion}\n- Situation: {situation}\n- Needs: {underlying_needs}\n\nEpisode:\n- Title: {episode_title}\n- Show: {show_name}\n- Excerpt: {preview}\n\nWrite 2-3 warm, specific sentences explaining why THIS episode will help THEM.\nUse \"you\" language. Be concrete, not generic.",
+    "max_tokens": 150,
+    "temperature": 0.7
+  }
