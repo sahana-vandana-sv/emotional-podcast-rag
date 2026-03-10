@@ -1,9 +1,12 @@
 import pandas as pd
-from openai import OpenAI
+from openai import OpenAI,APIError, RateLimitError, APIConnectionError
 from src.config import OPENAI_API_KEY,EMBEDDING_MODEL
+from src.logging_utils import get_logger 
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+# Create logger for this module
+logger = get_logger("get_embeddings")
 
 # -----------------------------------------------------------
 # Token estimation & text chunking
@@ -36,7 +39,7 @@ def _chunk_text(text: str, max_tokens: int = 6000) -> list[str]:
         chunk = text[i:i + max_chars]
         if chunk.strip():
             chunks.append(chunk)
-    
+    logger.debug(f"Split text into {len(chunks)} chunks (max {max_tokens} tokens each)")
     return chunks
 
 
@@ -62,6 +65,7 @@ def get_embedding_safe(
     text: str, 
     model: str = EMBEDDING_MODEL,
     max_tokens_per_chunk: int = 6000,
+    row_idx: int = None,
 ) -> list[float]:
     """
     Generate embedding for text of ANY length.
@@ -72,13 +76,19 @@ def get_embedding_safe(
     This prevents the "maximum context length exceeded" error.
     """
     text = _clean_text(text)
+    estimated_tokens = _estimate_tokens(text)
     
     # Check if chunking is needed
     if _estimate_tokens(text) <= max_tokens_per_chunk:
+        logger.debug(f"Row {row_idx}: Embedding {estimated_tokens} tokens directly")
         return get_embedding(text, model)
     
     # Chunk and embed each piece
     chunks = _chunk_text(text, max_tokens=max_tokens_per_chunk)
+    logger.info(
+            f"Row {row_idx}: Text too long ({estimated_tokens} tokens) — "
+            f"split into {len(chunks)} chunks"
+        )
     print(f"  ⚠️  Text too long ({_estimate_tokens(text)} tokens) — split into {len(chunks)} chunks")
     
     chunk_embeddings = []
@@ -94,7 +104,11 @@ def get_embedding_safe(
         for j in range(dim):
             avg_embedding[j] += emb[j]
     
-    return [v / len(chunk_embeddings) for v in avg_embedding]
+    result = [v / len(chunk_embeddings) for v in avg_embedding]
+    logger.info(
+            f"Row {row_idx}: Successfully averaged {len(chunks)} chunk embeddings"
+        )
+    return result
 
 
 # -----------------------------------------------------------
@@ -116,9 +130,13 @@ def get_embeddings_batch(
     """
     embeddings = []
     
-    for i, text in enumerate(texts):
-        print(f"[{i+1}/{len(texts)}] Processing...")
-        emb = get_embedding_safe(text, model, max_tokens_per_chunk)
+    for i, (text,row_idx) in enumerate(texts):
+        logger.info(f"[{i+1}/{len(texts)}] Processing row {row_idx}...")
+        emb = get_embedding_safe(text, model, max_tokens_per_chunk ,row_idx=row_idx)
+
+        if emb is None:
+            failed_count += 1
+            logger.warning(f"Row {row_idx}: Embedding failed")
         embeddings.append(emb)
     
     return embeddings
