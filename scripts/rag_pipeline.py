@@ -8,7 +8,10 @@ def run_pipeline(
     user_query: str,
     collection,
     memory:     ConversationMemory,
+    df,
     top_k:      int = DEFAULT_TOP_K,
+    search_method: str = "hybrid",  # "semantic" or "hybrid"
+    semantic_weight: float = 0.8,
 ) -> dict:
     # Step 1: memory context → LLM knows what was discussed before
     memory_context = memory.build_context_string()
@@ -19,7 +22,16 @@ def run_pipeline(
     # Step 3: enhanced search (original query + LLM keywords)
     keywords       = ' '.join(emotional_context.get('search_keywords', []))
     enhanced_query = f"{user_query} {keywords}".strip()
-    results        = semantic_search(enhanced_query, collection, top_k=top_k)
+    if search_method == 'hybrid':
+        from src.hybrid_search import HybridSearcher
+        searcher = HybridSearcher(collection, df)
+        results = searcher.search(
+            enhanced_query,
+            top_k=top_k,
+            semantic_weight=semantic_weight,
+        )
+    else:
+        results = semantic_search(enhanced_query, collection, top_k)
 
     # Step 4: generate explanations
     recommendations = []
