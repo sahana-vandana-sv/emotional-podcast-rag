@@ -1,6 +1,6 @@
 # gets the query embeddings and searches the embeddings 
 
-from src.get_embeddings import get_embedding
+from src.embeddings import get_embedding
 from src.config import DEFAULT_TOP_K
 
 def semantic_search(query: str, collection, top_k: int = DEFAULT_TOP_K) -> list[dict]:

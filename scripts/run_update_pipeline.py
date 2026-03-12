@@ -6,7 +6,7 @@ from pathlib import Path
 from src.config import PODCASTS_CSV,NEW_URLS_CSV,TRANSCRIPTS_CSV,TRANSCRIPT_EMBEDDINGS_CSV
 from src.url_store import add_new_urls
 from src.transcript_fetcher import fetch_all_transcripts
-from src.get_embeddings import add_embeddings_to_df
+from src.embeddings import add_embeddings_to_df
 
 def processed_or_empty(path:Path)->pd.DataFrame:
     if path.exists():

@@ -3,7 +3,7 @@
 import sys
 sys.path.append('..')
 
-from src.get_embeddings import get_embedding
+from src.embeddings import get_embedding
 from src.search import semantic_search
 from src.data_loader import load_episodes
 from src.vector_store import get_collection

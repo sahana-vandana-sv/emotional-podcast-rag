@@ -1,5 +1,5 @@
 # add this line to src/__init__.py
-from src.get_embeddings import get_embedding, add_embeddings_to_df
+from src.embeddings import get_embedding, add_embeddings_to_df
 from src.config       import *
 from src.data_loader  import load_episodes
 from src.vector_store import get_collection, build_collection
