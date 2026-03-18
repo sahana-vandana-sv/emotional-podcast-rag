@@ -116,8 +116,10 @@ def get_embedding_safe(
 # -----------------------------------------------------------
 def get_embeddings_batch(
     texts: list[str],
+    row_indices: list[int] = None,
     model: str = EMBEDDING_MODEL,
     max_tokens_per_chunk: int = 6000,
+    delay_between_requests: float = 0.5,
 ) -> list[list[float]]:
     """
     Generate embeddings for a list of texts.
@@ -128,9 +130,16 @@ def get_embeddings_batch(
     
     Returns embeddings in same order as input texts.
     """
+    import time 
+   # Default to sequential indices if not provided
+    if row_indices is None:
+        row_indices = list(range(len(texts)))
     embeddings = []
+    failed_count = 0
+
+    logger.info(f"Starting batch embedding for {len(texts)} texts")
     
-    for i, (text,row_idx) in enumerate(texts):
+    for i, (text, row_idx) in enumerate(zip(texts, row_indices)):
         logger.info(f"[{i+1}/{len(texts)}] Processing row {row_idx}...")
         emb = get_embedding_safe(text, model, max_tokens_per_chunk ,row_idx=row_idx)
 
@@ -138,6 +147,15 @@ def get_embeddings_batch(
             failed_count += 1
             logger.warning(f"Row {row_idx}: Embedding failed")
         embeddings.append(emb)
+
+        # Rate limiting
+        if i < len(texts) - 1:
+            time.sleep(delay_between_requests)
+    
+    logger.info(f"Batch complete: {len(texts) - failed_count}/{len(texts)} successful")
+    
+    if failed_count > 0:
+        logger.warning(f"⚠️  {failed_count} embeddings failed")
     
     return embeddings
 
