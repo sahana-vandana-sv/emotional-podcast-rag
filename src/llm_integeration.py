@@ -38,16 +38,50 @@ def generate_explanation(
     emotional_context: dict,
     prompt_version: str | None = None,
 ) -> str:
+     # ──────────────────────────────────────────────────────
+    # 1. Extract metadata from result
+    # ──────────────────────────────────────────────────────
+    if 'metadata' in episode_result:
+        # Chunk format (new)
+        meta = episode_result['metadata']
+        episode_title = meta.get('episode_title', 'Unknown Episode')
+        
+        # Try both possible keys for channel name
+        show_name = meta.get('show_name') or meta.get('youtube_channel', 'Unknown Channel')
+        
+        preview = episode_result.get('preview', '')
+    else:
+        # Episode format (old - backwards compatible)
+        episode_title = episode_result.get('episode_title', 'Unknown Episode')
+        show_name = episode_result.get('show_name', 'Unknown Channel')
+        preview = episode_result.get('preview', '')
+
+     #──────────────────────────────────────────────────────
+    # 2. Extract emotional context
+    # ──────────────────────────────────────────────────────
+    primary_emotion = emotional_context.get('primary_emotion', 'emotional')
+    situation = emotional_context.get('situation', user_query)
+    underlying_needs = emotional_context.get('underlying_needs', [])
+    
+    # Format underlying_needs for template
+    if isinstance(underlying_needs, list):
+        needs_str = ', '.join(underlying_needs) if underlying_needs else 'self-understanding'
+    else:
+        needs_str = str(underlying_needs)
+    
+    # Trim preview to 300 chars
+    preview = preview[:300] if preview else 'Content not available'
+    
     prompt_cfg = load_prompt("generate_explanation", version=prompt_version)
 
     user_prompt = prompt_cfg["user_template"].format(
         user_query=user_query,
-        primary_emotion=emotional_context["primary_emotion"],
-        situation=emotional_context["situation"],
-        underlying_needs=", ".join(emotional_context["underlying_needs"]),
-        episode_title=episode_result["metadata"]["episode_title"],
-        show_name=episode_result["metadata"]["show_name"],
-        preview=episode_result["preview"],
+        primary_emotion=primary_emotion,
+        situation=situation,
+        underlying_needs=needs_str,
+        episode_title=episode_title,
+        show_name=show_name,
+        preview=preview,
     )
     response = openai_client.chat.completions.create(
         model=LLM_MODEL,

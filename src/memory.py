@@ -40,30 +40,21 @@ class ConversationMemory:
         if len(self._history) > self.max_turns:
             self._history.pop(0)
 
-    def build_context_string(self) -> str:
-        """
-        Return plain-text summary of recent turns for LLM prompt.
-
-        Example
-        -------
-        Previous conversation:
-        [Turn 1] User felt: anxiety | Asked: "I feel stressed about my job"
-                 Recommended: "Tim Ferriss on Fear", "Brené Brown on Shame"
-        """
-        if not self._history:
-            return ""
-
-        lines = ["Previous conversation:"]
-        for i, turn in enumerate(self._history, 1):
-            titles = [
-                r.get('metadata', {}).get('episode_title', 'Unknown')
-                for r in turn.recommendations
-            ]
-            lines.append(
-                f"[Turn {i}] User felt: {turn.primary_emotion} | "
-                f'Asked: "{turn.user_query}"\n'
-                f"         Recommended: {', '.join(titles)}"
-            )
+    def build_context_string(self):
+        lines = []
+        for turn in self._history:
+            lines.append(f"User: {turn.user_query}")
+            lines.append(f"Emotion: {turn.primary_emotion}")
+            
+            # Handle recommendations as a list of strings
+            if turn.recommendations:
+                if isinstance(turn.recommendations, list):
+                    rec_str = ", ".join(turn.recommendations)
+                else:
+                    rec_str = str(turn.recommendations)
+                
+                lines.append(f"Recommended: {rec_str}")
+        
         return "\n".join(lines)
 
     def last_turn(self) -> Optional[Turn]:

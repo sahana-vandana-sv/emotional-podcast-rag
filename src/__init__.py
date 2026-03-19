@@ -9,4 +9,4 @@ from src.memory       import ConversationMemory, Turn
 from src.hybrid_search import hybrid_search,HybridSearcher
 from src.timestamp_utils import format_timestamp, format_duration, calculate_segment_end_time
 from src.chunking import chunk_transcript_with_timestamps, parse_raw_segments
-from src.vector_store_chunked import build_chunked_collection
+from src.vector_store_chunked import build_chunked_collection,get_chunked_collection

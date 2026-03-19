@@ -1,38 +1,131 @@
+# streamlit_app.py
+# -----------------------------------------------------------
+# Streamlit UI with timestamp display
+# -----------------------------------------------------------
+# Get absolute path to project root
+import sys
 import os
-import requests
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 import streamlit as st
+from src.vector_store_chunked import get_chunked_collection
+from scripts.rag_pipeline import run_pipeline
+from src.memory import ConversationMemory
+from src.data_loader import load_episodes
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://emotional-podcast-rag.onrender.com")
+st.set_page_config(page_title="Emotional Podcast Discovery", page_icon="🎧")
 
-st.set_page_config(page_title="Podcast Discovery", layout="wide")
-st.title("Emotional Podcast RAG")
+# Initialize
+if 'memory' not in st.session_state:
+    st.session_state.memory = ConversationMemory()
 
-query = st.text_input("What are you feeling now ?")
-num_recs = st.slider("Number of recommendations", min_value=1, max_value=10, value=3)
+if 'collection' not in st.session_state:
+    st.session_state.collection = get_chunked_collection()
 
-if st.button("Search") and query.strip():
-    with st.spinner("Searching..."):
-        payload = {
-            "query": query.strip(),
-            "num_recommendations": num_recs,
-        }
+if 'df' not in st.session_state:
+    st.session_state.df = load_episodes()
 
-        r = requests.post(f"{API_BASE_URL}/api/search", json=payload, timeout=60)
-        r.raise_for_status()
-        data = r.json()
+# Header
+st.title("🎧 Emotional Podcast Discovery")
+st.caption("Find the exact moment in a podcast that addresses how you feel")
 
-    st.subheader("Results")
-    results = data.get("results") or data.get("recommendations") or []
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Settings")
+    
+    search_method = st.selectbox(
+        "Search Method",
+        ["hybrid", "semantic"],
+        index=0,
+    )
+    
+    if search_method == "hybrid":
+        semantic_weight = st.slider(
+            "Semantic Weight",
+            min_value=0.5,
+            max_value=1.0,
+            value=0.7,
+            step=0.05,
+            help="Higher = more semantic, Lower = more keyword-based"
+        )
+    else:
+        semantic_weight = 1.0
+    
+    top_k = st.slider("Chunks to Retrieve", 5, 20, 10)
+    top_episodes = st.slider("Episodes to Show", 1, 5, 3)
+    
+    if st.button("🗑️ Clear Memory"):
+        st.session_state.memory.clear()
+        st.success("Memory cleared!")
 
-    for item in results:
-        # adjust keys to what your backend returns
-        title = item.get("episode_title") or item.get("metadata", {}).get("episode_title") or "Untitled"
-        url = item.get("url") or item.get("metadata", {}).get("url") or ""
-        snippet = item.get("snippet") or item.get("document") or ""
+# Main query input
+user_query = st.text_area(
+    "How are you feeling?",
+    placeholder="e.g., I keep beating myself up over mistakes I made at work",
+    height=100,
+)
 
-        st.write(f"**{title}**")
-        if snippet:
-            st.write(snippet)
-        if url:
-            st.write(url)
+if st.button("🔍 Find Episodes", type="primary"):
+    if user_query:
+        with st.spinner("Searching for relevant moments..."):
+            output = run_pipeline(
+                user_query=user_query,
+                collection=st.session_state.collection,
+                memory=st.session_state.memory,
+                df=st.session_state.df,
+                top_k=top_k,
+                top_episodes=top_episodes,
+                search_method=search_method,
+                semantic_weight=semantic_weight,
+            )
+        
+        # Display results
         st.divider()
+        
+        st.subheader(f"💭 Your Query: {output['query']}")
+        st.caption(f"Detected emotion: **{output['emotional_context']['primary_emotion']}**")
+        
+        st.info(f"Found **{len(output['episodes'])} episodes** with **{output['total_chunks_retrieved']} relevant segments**")
+        
+        # Display each episode
+        for i, episode in enumerate(output['episodes'], 1):
+            with st.container():
+                st.markdown(f"### {i}. 🎧 {episode['episode_title']}")
+                # Try both possible key names
+                channel = episode.get('youtube_channel') or episode.get('show_name', 'Unknown')
+                st.caption(f"by {channel} • Match Score: {episode['best_score']:.3f}")
+
+                # Explanation
+                st.info(f"💡 **Why this helps:** {episode['explanation']}")
+                
+                # Chunks/Segments
+                st.markdown(f"**📍 Relevant Segments ({episode['total_chunks_retrieved']}):**")
+                
+                for j, chunk in enumerate(episode['chunks'], 1):
+                    meta = chunk['metadata']
+                    
+                    with st.expander(
+                        f"⏱️  {meta['start_time_display']} - {meta['end_time_display']} "
+                        f"({meta['duration_display']}) • Score: {chunk['similarity']:.3f}",
+                        expanded=(j == 1)  # Expand first chunk
+                    ):
+                        # Preview text
+                        st.markdown(chunk['preview'])
+                        
+                        # YouTube link with timestamp
+                        video_url = f"{episode['url']}&t={meta['start_time_seconds']}s"
+                        st.markdown(f"[▶️ Play from {meta['start_time_display']}]({video_url})")
+                
+                st.divider()
+    else:
+        st.warning("Please enter how you're feeling")
+
+# Show conversation history
+if len(st.session_state.memory) > 0:
+    with st.expander("💬 Conversation History"):
+        for turn in st.session_state.memory._history:
+            st.markdown(f"**You:** {turn.user_query}")
+            st.markdown(f"**Emotion:** {turn.primary_emotion}")
+            st.markdown(f"**Found:** {', '.join(turn.recommendations[:3])}")
+            st.markdown("---")
