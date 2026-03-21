@@ -1,1 +1,1 @@
-web: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+web: streamlit run streamlit/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
