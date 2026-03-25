@@ -3,7 +3,8 @@ services:
     name: emotional-podcast-rag
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    startCommand: streamlit run streamlit/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    envVars:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
