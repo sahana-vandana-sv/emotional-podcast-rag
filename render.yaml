@@ -5,7 +5,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: streamlit run streamlit/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
     envVars:
-    envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: PYTHON_VERSION
