@@ -200,6 +200,11 @@ def fetch_metadata_youtube_api(video_id: str) -> dict:
         # Extract metadata
         result["youtube_title"] = snippet.get('title', 'Unknown Title')
         result["youtube_channel"] = snippet.get('channelTitle', 'Unknown Channel')
+
+        # Parse ISO 8601 duration (e.g., "PT1H2M10S")
+        duration_str = content_details.get('duration', 'PT0S')
+        duration_mins = parse_iso8601_duration(duration_str)  # ← Need this function
+        result["duration_mins"] = duration_mins
         
         logger.debug(
             f"✓ API metadata: {result['youtube_title'][:40]} | "
@@ -216,11 +221,32 @@ def fetch_metadata_youtube_api(video_id: str) -> dict:
 
     return result
 
+def parse_iso8601_duration(duration: str) -> float:
+
+    """
+    Convert ISO 8601 duration to minutes. 
+    Examples:
+        "PT1H2M10S" → 62.17 minutes
+        "PT5M30S"   → 5.5 minutes
+        "PT45S"     → 0.75 minutes
+    """
+    import re
+    match = re.match(
+        r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration)
+    if not match:
+        return 0.0
+
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    total_minutes = hours * 60 + minutes + seconds / 60
+
+    return round(total_minutes, 2)
 
 # -----------------------------------------------------------
 # STEP 3: Fetch transcript for one video
 # -----------------------------------------------------------
-def fetch_transcript(video_id: str, max_retries: int = 3,base_wait: float = 10.0) -> dict:
+def fetch_transcript(video_id: str, max_retries: int = 5,base_wait: float = 10.0,use_proxy: bool = False)) -> dict:
 
     result = {
         "video_id":        video_id,
@@ -243,6 +269,7 @@ def fetch_transcript(video_id: str, max_retries: int = 3,base_wait: float = 10.0
 
         if metadata.get("error") and not result["youtube_title"]:
             logger.warning(f"Could not fetch metadata via API: {metadata['error']}")
+
 
     ytt_api = YouTubeTranscriptApi()
 
@@ -456,6 +483,7 @@ def fetch_all_transcripts(
             "transcript_clean": clean,
             "duration_mins":    result.get("duration_mins"),
             "num_segments":     result.get("num_segments"),
+            "raw_segments":     result.get("raw_segments"),
             "word_count":       len(clean.split()) if clean else 0,
             "fetched_at":       datetime.now().isoformat(),
         })
