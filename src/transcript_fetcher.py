@@ -169,6 +169,17 @@ def extract_video_id(url: str) -> str | None:
 
 # STEP 3A: Fetch metadata using YouTube Data API v3
 
+def _parse_iso_duration(iso_duration: str) -> float:
+    """Convert ISO 8601 duration string (e.g. PT1H23M45S) to total seconds."""
+    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', iso_duration)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return (int(hours or 0) * 3600 +
+            int(minutes or 0) * 60 +
+            int(seconds or 0))
+
+
 def fetch_metadata_youtube_api(video_id: str) -> dict:
     result = {
         "youtube_title":   None,
@@ -200,10 +211,15 @@ def fetch_metadata_youtube_api(video_id: str) -> dict:
         # Extract metadata
         result["youtube_title"] = snippet.get('title', 'Unknown Title')
         result["youtube_channel"] = snippet.get('channelTitle', 'Unknown Channel')
-        
+
+        # Extract duration from contentDetails
+        iso_duration = content_details.get('duration', 'PT0S')
+        duration_secs = _parse_iso_duration(iso_duration)
+        result["duration_mins"] = round(duration_secs / 60, 2)
+
         logger.debug(
             f"✓ API metadata: {result['youtube_title'][:40]} | "
-            f"{result['youtube_channel']} | {duration_mins} mins"
+            f"{result['youtube_channel']} | {result['duration_mins']} mins"
         )
         
     except HttpError as e:
@@ -456,6 +472,7 @@ def fetch_all_transcripts(
             "transcript_clean": clean,
             "duration_mins":    result.get("duration_mins"),
             "num_segments":     result.get("num_segments"),
+            "raw_segments":     result.get("raw_segments"),
             "word_count":       len(clean.split()) if clean else 0,
             "fetched_at":       datetime.now().isoformat(),
         })
