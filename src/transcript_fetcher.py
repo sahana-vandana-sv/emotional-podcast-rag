@@ -169,6 +169,17 @@ def extract_video_id(url: str) -> str | None:
 
 # STEP 3A: Fetch metadata using YouTube Data API v3
 
+def _parse_iso_duration(iso_duration: str) -> float:
+    """Convert ISO 8601 duration string (e.g. PT1H23M45S) to total seconds."""
+    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', iso_duration)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return (int(hours or 0) * 3600 +
+            int(minutes or 0) * 60 +
+            int(seconds or 0))
+
+
 def fetch_metadata_youtube_api(video_id: str) -> dict:
     result = {
         "youtube_title":   None,
@@ -200,15 +211,10 @@ def fetch_metadata_youtube_api(video_id: str) -> dict:
         # Extract metadata
         result["youtube_title"] = snippet.get('title', 'Unknown Title')
         result["youtube_channel"] = snippet.get('channelTitle', 'Unknown Channel')
-
-        # Parse ISO 8601 duration (e.g., "PT1H2M10S")
-        duration_str = content_details.get('duration', 'PT0S')
-        duration_mins = parse_iso8601_duration(duration_str)  # ← Need this function
-        result["duration_mins"] = duration_mins
         
         logger.debug(
             f"✓ API metadata: {result['youtube_title'][:40]} | "
-            f"{result['youtube_channel']} | {duration_mins} mins"
+            f"{result['youtube_channel']} | {result['duration_mins']} mins"
         )
         
     except HttpError as e:
