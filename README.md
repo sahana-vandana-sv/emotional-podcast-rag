@@ -25,6 +25,71 @@ When you're stressed, anxious, or going through something hard — this system f
 - **Personalized Explanations**: Tells you why each episode will help
 - **Fast API**: RESTful API for easy integration
 
+                  ┌──────────────────────────────┐
+                │     YouTube URLs (CSV)       │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Transcript Fetcher         │
+                │ (youtube-transcript-api)     │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Raw Segments (timestamped) │
+                │ {text, start, duration}      │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Chunking Engine            │
+                │ Token-based + Overlap        │
+                │ + Timestamp Mapping          │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │     Chunked Data             │
+                │ text + metadata + timestamps │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Embedding Generator        │
+                │ (OpenAI embeddings API)      │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Vector Database            │
+                │ (ChromaDB - HNSW index)      │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Retrieval Layer            │
+                │ (Similarity Search)          │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   FastAPI Backend            │
+                │ /search endpoint             │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   User Query                 │
+                │ "feeling anxious..."         │
+                └────────────┬─────────────────┘
+                             │
+                             ▼
+                ┌──────────────────────────────┐
+                │   Retrieved Chunks           │
+                │ + timestamps + metadata      │
+                └──────────────────────────────┘
+
 ## 🚀 Quick Start
 
 ### Prerequisites
