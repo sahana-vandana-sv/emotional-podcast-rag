@@ -9,8 +9,7 @@ AI powered podcast discovery system that understands your emotional state and re
 Try it now — no code required! Open the docs page and click "Try it out" on `/api/search`.
 
 [![Deploy Status](https://img.shields.io/badge/deploy-passing-brightgreen)](https://emotional-podcast-rag.onrender.com)
-[![API Status](https://img.shields.io/badge/API-online-success)](https://emotional-podcast-rag.com/health)
-[![Demo Video](https://img.shields.io/badge/API-online-success)]([https://emotional-podcast-rag.com/health](https://www.loom.com/share/42d33ccb653641e0bbd7cf5823d66845))
+[![Demo Video](https://img.shields.io/badge/API-online-success)](https://www.loom.com/share/42d33ccb653641e0bbd7cf5823d66845)
 
 ---
 
